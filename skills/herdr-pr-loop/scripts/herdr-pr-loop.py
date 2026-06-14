@@ -64,14 +64,14 @@ def strip_quotes(value: str) -> str:
     return value
 
 
-def expand(value: str, cfg: dict[str, str]) -> str:
-    merged = {**os.environ, **cfg, "PWD": os.getcwd()}
+def expand(value: str, cfg: dict[str, str], pwd: str | None = None) -> str:
+    merged = {**os.environ, **cfg, "PWD": pwd or os.getcwd()}
 
     def repl(match: re.Match[str]) -> str:
         default_var, default, braced, plain = match.groups()
         if default_var:
             current = os.environ.get(default_var, "")
-            return current if current else expand(strip_quotes(default), cfg)
+            return current if current else expand(strip_quotes(default), cfg, pwd)
         return merged.get(braced or plain, match.group(0))
 
     return re.sub(
@@ -103,6 +103,7 @@ def select_config(path: str | None) -> Path:
 def read_config(path: str | None) -> tuple[dict[str, str], Path | None]:
     cfg = dict(DEFAULTS)
     cfg_path = select_config(path)
+    base_pwd = os.getcwd() if cfg_path == EXAMPLE_CONFIG else str(cfg_path.parent)
 
     for raw in cfg_path.read_text().splitlines():
         line = raw.strip()
@@ -115,10 +116,10 @@ def read_config(path: str | None) -> tuple[dict[str, str], Path | None]:
         key, value = line.split("=", 1)
         key = key.strip()
         if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
-            cfg[key] = expand(strip_quotes(value), cfg)
+            cfg[key] = expand(strip_quotes(value), cfg, base_pwd)
 
     for key, value in list(cfg.items()):
-        cfg[key] = expand(value, cfg)
+        cfg[key] = expand(value, cfg, base_pwd)
     if cfg.get("JAI_REPO"):
         cfg["PROJECT_REPO"] = cfg["JAI_REPO"]
     else:
@@ -287,9 +288,12 @@ def append_run_log(cfg: dict[str, str], role: str, event: str, outcome: str) -> 
         )
 
 
-def load_state(cfg: dict[str, str]) -> dict:
-    init_loop_files(cfg)
+def load_state(cfg: dict[str, str], *, create: bool = True) -> dict:
+    if create:
+        init_loop_files(cfg)
     state_path = Path(cfg["STATE_JSON"])
+    if not state_path.exists():
+        return {}
     try:
         return json.loads(state_path.read_text())
     except json.JSONDecodeError as exc:
@@ -371,9 +375,24 @@ def pane_cmd(cfg: dict[str, str], cfg_path: Path | None, role: str, child: str =
 
 
 def run_in_pane(pane: str, tab: str, name: str, command: str) -> None:
-    subprocess.run(["herdr", "tab", "rename", tab, name], check=True)
-    subprocess.run(["herdr", "pane", "rename", pane, name], check=True)
-    subprocess.run(["herdr", "pane", "run", pane, command], check=True)
+    subprocess.run(["herdr", "tab", "rename", tab, name], check=True, capture_output=True, text=True)
+    subprocess.run(["herdr", "pane", "rename", pane, name], check=True, capture_output=True, text=True)
+    subprocess.run(["herdr", "pane", "run", pane, command], check=True, capture_output=True, text=True)
+
+
+def workspace_live(workspace_id: str | None) -> bool:
+    if not workspace_id:
+        return False
+    proc = subprocess.run(
+        ["herdr", "workspace", "get", workspace_id],
+        text=True,
+        capture_output=True,
+    )
+    return proc.returncode == 0
+
+
+def close_workspace(workspace_id: str) -> None:
+    subprocess.run(["herdr", "workspace", "close", workspace_id], check=True, capture_output=True, text=True)
 
 
 def cmd_launch(args: argparse.Namespace) -> None:
@@ -383,7 +402,12 @@ def cmd_launch(args: argparse.Namespace) -> None:
         raise SystemExit("\n".join(problems))
     ensure_not_paused(cfg)
     init_loop_files(cfg)
-    state = load_state(cfg)
+    state = load_state(cfg, create=False)
+    old_ws = state.get("workspace_id")
+    if old_ws and workspace_live(old_ws):
+        if not args.replace:
+            raise SystemExit(f"workspace already running: {old_ws} (use launch --replace)")
+        close_workspace(old_ws)
     state.update(
         {
             "task": cfg["TASK_NAME"],
@@ -399,51 +423,31 @@ def cmd_launch(args: argparse.Namespace) -> None:
     )
     save_state(cfg, state)
 
-    ws_json = run_json([
-        "herdr",
-        "workspace",
-        "create",
-        "--cwd",
-        cfg["PROJECT_REPO"],
-        "--label",
-        cfg["WORKSPACE_LABEL"],
-        "--focus",
-    ])
-    result = ws_json["result"]
-    ws = result["workspace"]["workspace_id"]
-    root_tab = result["tab"]["tab_id"]
-    root_pane = result["root_pane"]["pane_id"]
-    state["workspace_id"] = ws
-    save_state(cfg, state)
-
-    command = pane_cmd(cfg, cfg_path, "tester")
-    run_in_pane(root_pane, root_tab, "tester", command)
-    record_role(cfg, state, "tester", root_tab, root_pane, command)
-    append_run_log(cfg, "tester", "spawned", "started")
-
-    for role in ("coder", "reviewer"):
-        tab_json = run_json([
+    ws = None
+    try:
+        ws_json = run_json([
             "herdr",
-            "tab",
+            "workspace",
             "create",
-            "--workspace",
-            ws,
             "--cwd",
             cfg["PROJECT_REPO"],
             "--label",
-            role,
-            "--no-focus",
+            cfg["WORKSPACE_LABEL"],
+            "--focus",
         ])
-        pane_id = tab_json["result"]["root_pane"]["pane_id"]
-        tab_id = tab_json["result"]["tab"]["tab_id"]
-        command = pane_cmd(cfg, cfg_path, role)
-        run_in_pane(pane_id, tab_id, role, command)
-        record_role(cfg, state, role, tab_id, pane_id, command)
-        append_run_log(cfg, role, "spawned", "started")
+        result = ws_json["result"]
+        ws = result["workspace"]["workspace_id"]
+        root_tab = result["tab"]["tab_id"]
+        root_pane = result["root_pane"]["pane_id"]
+        state["workspace_id"] = ws
+        save_state(cfg, state)
 
-    for child in cfg.get("CHILD_PRS", "").split():
-        for role in ("child-coder", "child-reviewer"):
-            name = f"{role}-{child}"
+        command = pane_cmd(cfg, cfg_path, "tester")
+        run_in_pane(root_pane, root_tab, "tester", command)
+        record_role(cfg, state, "tester", root_tab, root_pane, command)
+        append_run_log(cfg, "tester", "spawned", "started")
+
+        for role in ("coder", "reviewer"):
             tab_json = run_json([
                 "herdr",
                 "tab",
@@ -453,20 +457,53 @@ def cmd_launch(args: argparse.Namespace) -> None:
                 "--cwd",
                 cfg["PROJECT_REPO"],
                 "--label",
-                name,
+                role,
                 "--no-focus",
             ])
             pane_id = tab_json["result"]["root_pane"]["pane_id"]
             tab_id = tab_json["result"]["tab"]["tab_id"]
-            command = pane_cmd(cfg, cfg_path, role, child)
-            run_in_pane(pane_id, tab_id, name, command)
-            record_role(cfg, state, name, tab_id, pane_id, command)
-            append_run_log(cfg, name, "spawned", "started")
+            command = pane_cmd(cfg, cfg_path, role)
+            run_in_pane(pane_id, tab_id, role, command)
+            record_role(cfg, state, role, tab_id, pane_id, command)
+            append_run_log(cfg, role, "spawned", "started")
 
-    subprocess.run(["herdr", "workspace", "focus", ws], check=True)
-    state["status"] = "running"
-    save_state(cfg, state)
-    print(f"Herdr workspace: {cfg['WORKSPACE_LABEL']} ({ws})")
+        for child in cfg.get("CHILD_PRS", "").split():
+            for role in ("child-coder", "child-reviewer"):
+                name = f"{role}-{child}"
+                tab_json = run_json([
+                    "herdr",
+                    "tab",
+                    "create",
+                    "--workspace",
+                    ws,
+                    "--cwd",
+                    cfg["PROJECT_REPO"],
+                    "--label",
+                    name,
+                    "--no-focus",
+                ])
+                pane_id = tab_json["result"]["root_pane"]["pane_id"]
+                tab_id = tab_json["result"]["tab"]["tab_id"]
+                command = pane_cmd(cfg, cfg_path, role, child)
+                run_in_pane(pane_id, tab_id, name, command)
+                record_role(cfg, state, name, tab_id, pane_id, command)
+                append_run_log(cfg, name, "spawned", "started")
+
+        subprocess.run(["herdr", "workspace", "focus", ws], check=True, capture_output=True, text=True)
+        state["status"] = "running"
+        save_state(cfg, state)
+        print(f"Herdr workspace: {cfg['WORKSPACE_LABEL']} ({ws})")
+    except Exception as exc:
+        state["status"] = "failed"
+        state["failure"] = str(exc)
+        if ws:
+            try:
+                close_workspace(ws)
+            finally:
+                state["workspace_id"] = None
+                state["roles"] = {}
+        save_state(cfg, state)
+        raise
 
 
 def cmd_run_agent(args: argparse.Namespace) -> None:
@@ -527,7 +564,11 @@ def cmd_init(args: argparse.Namespace) -> None:
 
 def cmd_status(args: argparse.Namespace) -> None:
     cfg, cfg_path = read_config(args.config)
-    state = load_state(cfg)
+    state = load_state(cfg, create=False)
+    shown_state = dict(state)
+    live = workspace_live(state.get("workspace_id"))
+    if state.get("workspace_id") and not live and state.get("status") == "running":
+        shown_state["status"] = "stale"
     paused = Path(cfg["PAUSE_FILE"]).exists()
     summary = {
         "config": str(cfg_path) if cfg_path else None,
@@ -536,7 +577,8 @@ def cmd_status(args: argparse.Namespace) -> None:
         "state_json": cfg["STATE_JSON"],
         "run_log": cfg["RUN_LOG_MD"],
         "paused": paused,
-        "state": state,
+        "workspace_live": live,
+        "state": shown_state,
     }
     print(json.dumps(summary, indent=2))
 
@@ -567,6 +609,22 @@ def cmd_start(args: argparse.Namespace) -> None:
         save_state(cfg, state)
     append_run_log(cfg, "all", "resume", "pause-file-removed")
     print("resumed")
+
+
+def cmd_close(args: argparse.Namespace) -> None:
+    cfg, _ = read_config(args.config)
+    state = load_state(cfg, create=False)
+    ws = state.get("workspace_id")
+    if not ws:
+        raise SystemExit("no workspace_id in state")
+    if workspace_live(ws):
+        close_workspace(ws)
+    state["status"] = "closed"
+    state["workspace_id"] = None
+    state["roles"] = {}
+    save_state(cfg, state)
+    append_run_log(cfg, "all", "close", ws)
+    print(f"closed: {ws}")
 
 
 def copy_skill(dst: Path, force: bool) -> None:
@@ -624,6 +682,7 @@ def main() -> None:
     p.set_defaults(func=cmd_init)
 
     p = sub.add_parser("launch", parents=[common])
+    p.add_argument("--replace", action="store_true")
     p.set_defaults(func=cmd_launch)
 
     p = sub.add_parser("status", parents=[common])
@@ -635,6 +694,9 @@ def main() -> None:
 
     p = sub.add_parser("start", parents=[common])
     p.set_defaults(func=cmd_start)
+
+    p = sub.add_parser("close", parents=[common])
+    p.set_defaults(func=cmd_close)
 
     p = sub.add_parser("install")
     p.add_argument(

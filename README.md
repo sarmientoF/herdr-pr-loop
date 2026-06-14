@@ -69,9 +69,12 @@ uv run --script "$TOOL" doctor
 uv run --script "$TOOL" status
 uv run --script "$TOOL" stop "pause reason"
 uv run --script "$TOOL" start
+uv run --script "$TOOL" close
 ```
 
 `stop` writes `.herdr-loop/PAUSE`. Agents check that file each loop and stop at the next cycle.
+`close` closes the Herdr workspace recorded in `.herdr-loop/state.json`.
+`launch --replace` closes a recorded live workspace before launching again.
 
 ## Config
 

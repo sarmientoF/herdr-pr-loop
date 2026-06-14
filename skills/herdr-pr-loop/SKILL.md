@@ -56,10 +56,11 @@ Commands:
 - `run-agent [--print] ROLE [CHILD_PR]`: print prompt or exec configured agent.
 - `check`: validate script syntax and prompt rendering.
 - `doctor`: validate config, repo path, required CLIs, and core prompt rendering.
-- `launch`: create Herdr workspace/tabs and start agents.
-- `status`: print config, state, review dir, and pause state as JSON.
+- `launch [--replace]`: create Herdr workspace/tabs and start agents; refuse duplicate live workspace unless replacing.
+- `status`: print config, state, review dir, pause state, and whether the recorded workspace is live as JSON.
 - `stop [reason]`: write the pause file and mark state paused.
 - `start`: remove the pause file.
+- `close`: close the Herdr workspace recorded in `state.json`.
 - `install --target codex-user|codex-repo|claude-user|claude-repo|both-user [--force]`: copy this skill into an agent skill directory.
 
 Roles: `tester`, `coder`, `reviewer`, `child-coder`, `child-reviewer`.
