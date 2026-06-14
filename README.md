@@ -19,7 +19,9 @@ cp skills/herdr-pr-loop/assets/herd.env.example herd.conf.sh
 - `JAI_REPO`: repo each agent starts in
 - `REVIEW_DIR`: directory containing `review.md` and `feedback.md`
 - `AGENT_BIN` / `AGENT_ARGS`: default `claude --permission-mode auto`
-- `PR_NUMBERS`, `PARENT_PR`, `CHILD_PRS`, `PARENT_BRANCH`
+- `TASK_NAME`: local task label
+- `PR_NUMBERS`, `PARENT_PR`, `CHILD_PRS`, `PARENT_BRANCH`: optional, mainly remote PR mode
+- `SYNC_MODE`: `local` avoids fetch/push; `remote` uses GitHub PR branches
 
 ## Check
 
@@ -46,6 +48,29 @@ This creates one Herdr workspace with tabs:
 - `reviewer`
 - `child-coder-<pr>`
 - `child-reviewer-<pr>`
+
+## Local Vs Remote
+
+Default is local:
+
+```bash
+SYNC_MODE=local
+```
+
+Local mode:
+
+- no `git push`
+- no required GitHub PR updates
+- agents test/review current working tree and local commits
+- `review.md` / `feedback.md` stay local
+
+Remote mode:
+
+```bash
+SYNC_MODE=remote
+```
+
+Remote mode fetches/pulls/pushes PR branches and watches GitHub commits.
 
 ## Install As Skill
 

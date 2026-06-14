@@ -7,6 +7,8 @@ description: Set up and launch Herdr-managed multi-agent PR review loops with te
 
 Create a reusable Herdr workspace where each role runs in its own tab and coordinates through git plus `review.md` / `feedback.md`.
 
+`SYNC_MODE=local` keeps all code changes local and avoids fetch/push. `SYNC_MODE=remote` uses GitHub PR branches.
+
 ## Use
 
 1. Create or edit a config from `assets/herd.env.example`.

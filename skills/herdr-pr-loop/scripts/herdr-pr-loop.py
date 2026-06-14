@@ -26,6 +26,8 @@ DEFAULTS = {
     "AGENT_BIN": "claude",
     "AGENT_ARGS": "--permission-mode auto",
     "POLL_SECONDS": "120",
+    "SYNC_MODE": "local",
+    "TASK_NAME": "local-task",
     "PARENT_PR": "",
     "PR_NUMBERS": "",
     "CHILD_PRS": "",
@@ -92,7 +94,12 @@ def render(role: str, child_pr: str, cfg: dict[str, str]) -> str:
     if role in {"child-coder", "child-reviewer"} and not child_pr:
         raise SystemExit(f"{role} needs CHILD_PR")
 
-    values = {**cfg, "CHILD_PR": child_pr}
+    display = {
+        "PARENT_PR": cfg.get("PARENT_PR") or "none",
+        "PR_NUMBERS": cfg.get("PR_NUMBERS") or "none",
+        "PARENT_BRANCH": cfg.get("PARENT_BRANCH") or "none",
+    }
+    values = {**cfg, **display, "CHILD_PR": child_pr}
     text = template.read_text()
     for key, value in values.items():
         text = text.replace(f"{{{{{key}}}}}", value)

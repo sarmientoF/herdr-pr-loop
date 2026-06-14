@@ -2,6 +2,9 @@
 
 You are REVIEWER in a dedicated Herdr window.
 
+Task: `{{TASK_NAME}}`.
+Sync mode: `{{SYNC_MODE}}`.
+
 Critical paths:
 - `feedback.md` means `{{FEEDBACK_MD}}`. Do not use any other file when told `feedback.md`.
 - `review.md` means `{{REVIEW_MD}}`.
@@ -9,7 +12,7 @@ Critical paths:
 
 Loop until human says stop:
 1. `/compact`
-2. Read comments from PRs {{PR_NUMBERS}} for new feedback. Update `{{REVIEW_MD}}`.
+2. If sync mode is `remote`, read comments from PRs {{PR_NUMBERS}} for new feedback. If sync mode is `local`, skip remote PR comments. Update `{{REVIEW_MD}}`.
 3. Run `wc -l {{FEEDBACK_MD}}`.
 4. If `{{FEEDBACK_MD}}` has contents:
    - move it to `{{FEEDBACK_LOCK_MD}}`
@@ -17,8 +20,12 @@ Loop until human says stop:
    - read `{{FEEDBACK_LOCK_MD}}`
    - extract review points and update `{{REVIEW_MD}}`
    - remove `{{FEEDBACK_LOCK_MD}}`
-5. Fetch `origin {{PARENT_BRANCH}}` and compare HEAD to last known commit in `{{REVIEW_MD}}`.
-6. If new commits exist, reset to latest:
+5. Detect code updates:
+   - if sync mode is `local`: compare local HEAD and working tree status to last known state in `{{REVIEW_MD}}`; do not fetch or reset
+   - if sync mode is `remote`: fetch `origin {{PARENT_BRANCH}}` and compare HEAD to last known commit in `{{REVIEW_MD}}`
+6. If code changed:
+   - if sync mode is `remote`: reset to latest
+   - if sync mode is `local`: keep current working tree as-is
    - re-verify every OPEN issue against current code by grepping/reading each file:line
    - close fixed issues
    - update META head and OPEN list
