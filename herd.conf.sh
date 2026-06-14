@@ -5,9 +5,7 @@
 WORKSPACE_LABEL=${WORKSPACE_LABEL:-pr-review-loop}
 JAI_REPO=${JAI_REPO:-$PWD}
 
-AGENTS_GIT_URL=${AGENTS_GIT_URL:-https://github.com/ashleysmart-japanai/agents.git}
-AGENTS_REPO=${AGENTS_REPO:-$HOME/agents}
-SKIP_AGENTS_SYNC=${SKIP_AGENTS_SYNC:-0}
+GUIDANCE_DIR=${GUIDANCE_DIR:-}
 
 AGENT_BIN=${AGENT_BIN:-claude}
 AGENT_ARGS=${AGENT_ARGS:---permission-mode auto}

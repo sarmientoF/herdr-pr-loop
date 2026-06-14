@@ -22,6 +22,7 @@ cp skills/herdr-pr-loop/assets/herd.env.example herd.conf.sh
 - `TASK_NAME`: local task label
 - `PR_NUMBERS`, `PARENT_PR`, `CHILD_PRS`, `PARENT_BRANCH`: optional, mainly remote PR mode
 - `SYNC_MODE`: `local` avoids fetch/push; `remote` uses GitHub PR branches
+- `GUIDANCE_DIR`: optional custom review guidance; defaults to bundled guidance in this skill
 
 ## Check
 

@@ -20,9 +20,7 @@ EXAMPLE_CONFIG = SKILL_DIR / "assets" / "herd.env.example"
 DEFAULTS = {
     "WORKSPACE_LABEL": "pr-review-loop",
     "JAI_REPO": "$PWD",
-    "AGENTS_GIT_URL": "https://github.com/ashleysmart-japanai/agents.git",
-    "AGENTS_REPO": "$HOME/agents",
-    "SKIP_AGENTS_SYNC": "0",
+    "GUIDANCE_DIR": "",
     "AGENT_BIN": "claude",
     "AGENT_ARGS": "--permission-mode auto",
     "POLL_SECONDS": "120",
@@ -84,6 +82,7 @@ def read_config(path: str | None) -> tuple[dict[str, str], Path | None]:
 
     for key, value in list(cfg.items()):
         cfg[key] = expand(value, cfg)
+    cfg["GUIDANCE_DIR"] = cfg.get("GUIDANCE_DIR") or str(SKILL_DIR / "assets" / "guidance")
     return cfg, cfg_path if cfg_path.exists() else None
 
 
@@ -128,17 +127,6 @@ def shutil_which(cmd: str) -> str | None:
     return None
 
 
-def sync_agents(cfg: dict[str, str]) -> None:
-    if cfg.get("SKIP_AGENTS_SYNC") == "1" or not cfg.get("AGENTS_GIT_URL"):
-        return
-    repo = Path(cfg["AGENTS_REPO"]).expanduser()
-    if (repo / ".git").exists():
-        subprocess.run(["git", "-C", str(repo), "pull", "--ff-only"], check=True)
-    else:
-        repo.parent.mkdir(parents=True, exist_ok=True)
-        subprocess.run(["git", "clone", cfg["AGENTS_GIT_URL"], str(repo)], check=True)
-
-
 def pane_cmd(cfg: dict[str, str], cfg_path: Path | None, role: str, child: str = "") -> str:
     env = f"HERD_CONF={shlex.quote(str(cfg_path))} " if cfg_path else ""
     tail = f" {shlex.quote(child)}" if child else ""
@@ -158,7 +146,6 @@ def run_in_pane(pane: str, tab: str, name: str, command: str) -> None:
 def cmd_launch(args: argparse.Namespace) -> None:
     cfg, cfg_path = read_config(args.config)
     require_tools("herdr", "git", "uv", cfg["AGENT_BIN"])
-    sync_agents(cfg)
 
     Path(cfg["FEEDBACK_MD"]).parent.mkdir(parents=True, exist_ok=True)
     Path(cfg["FEEDBACK_MD"]).touch()

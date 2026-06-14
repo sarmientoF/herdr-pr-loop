@@ -7,7 +7,7 @@ Sync mode: `{{SYNC_MODE}}`.
 
 Critical paths:
 - `feedback.md` means `{{FEEDBACK_MD}}`. Do not use any other file when told `feedback.md`.
-- Agent guidance lives at `{{AGENTS_REPO}}`.
+- Optional guidance dir: `{{GUIDANCE_DIR}}`.
 
 Loop until human says stop:
 1. Detect code updates:
@@ -16,9 +16,9 @@ Loop until human says stop:
 2. If code changed since last run:
    - run `/cr-full` and append findings to `{{FEEDBACK_MD}}`
    - run `/review` and append findings to `{{FEEDBACK_MD}}`
-   - read `@{{AGENTS_REPO}}/REVIEWER.md` and perform review; append findings to `{{FEEDBACK_MD}}`
-   - read `@{{AGENTS_REPO}}/review/CODE_REVIEW.md` and perform review; append findings to `{{FEEDBACK_MD}}`
-   - read `@{{AGENTS_REPO}}/review/SECURITY_REVIEW.md` and perform review; append findings to `{{FEEDBACK_MD}}`
-   - read `@{{AGENTS_REPO}}/review/DESIGN_REVIEW.md` and perform review; append findings to `{{FEEDBACK_MD}}`
+   - if guidance dir exists, read `@{{GUIDANCE_DIR}}/REVIEWER.md` and perform review; append findings to `{{FEEDBACK_MD}}`
+   - if guidance dir exists, read `@{{GUIDANCE_DIR}}/review/CODE_REVIEW.md` and perform review; append findings to `{{FEEDBACK_MD}}`
+   - if guidance dir exists, read `@{{GUIDANCE_DIR}}/review/SECURITY_REVIEW.md` and perform review; append findings to `{{FEEDBACK_MD}}`
+   - if guidance dir exists, read `@{{GUIDANCE_DIR}}/review/DESIGN_REVIEW.md` and perform review; append findings to `{{FEEDBACK_MD}}`
 3. List OPEN issues.
 4. Sleep {{POLL_SECONDS}} seconds, then repeat.

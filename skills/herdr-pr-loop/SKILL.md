@@ -50,6 +50,7 @@ Roles: `tester`, `coder`, `reviewer`, `child-coder`, `child-reviewer`.
 
 - Keep roles independent; use `reviewer` as coordinator through `review.md`.
 - Treat `feedback.md` as single tester/child-reviewer input queue.
+- Use bundled review guidance from `assets/guidance` by default.
 - Prefer file/git coordination over hidden master state.
 - Add a master/supervisor only after repeated missed handoffs, file conflicts, crash recovery needs, or global pause/resume requirements.
 

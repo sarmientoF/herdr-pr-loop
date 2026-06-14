@@ -8,7 +8,7 @@ Sync mode: `{{SYNC_MODE}}`.
 Critical paths:
 - `feedback.md` means `{{FEEDBACK_MD}}`. Do not use any other file when told `feedback.md`.
 - `review.md` means `{{REVIEW_MD}}`.
-- Agent guidance lives at `{{AGENTS_REPO}}` cloned from `{{AGENTS_GIT_URL}}`.
+- Optional guidance dir: `{{GUIDANCE_DIR}}`.
 
 Loop until human says stop:
 1. `/compact`
@@ -32,10 +32,10 @@ Loop until human says stop:
    - in fresh sub-agents, run:
      - `/cr-full` on new code
      - `/review` on new code
-     - read `@{{AGENTS_REPO}}/review/CODE_REVIEW.md` and review
-     - read `@{{AGENTS_REPO}}/review/SECURITY_REVIEW.md` and review
-     - read `@{{AGENTS_REPO}}/review/DESIGN_REVIEW.md` and review
-     - read `@{{AGENTS_REPO}}/review/DESIGN_REVIEW.md` and perform anti-pattern check
+     - if guidance dir exists, read `@{{GUIDANCE_DIR}}/review/CODE_REVIEW.md` and review
+     - if guidance dir exists, read `@{{GUIDANCE_DIR}}/review/SECURITY_REVIEW.md` and review
+     - if guidance dir exists, read `@{{GUIDANCE_DIR}}/review/DESIGN_REVIEW.md` and review
+     - if guidance dir exists, read `@{{GUIDANCE_DIR}}/review/DESIGN_REVIEW.md` and perform anti-pattern check
      - read `{{REVIEW_MD}}` and check regressions on every closed issue
    - gather sub-agent results
    - dedupe findings and detect reopened prior issues

@@ -7,7 +7,7 @@ Sync mode: `{{SYNC_MODE}}`.
 
 Critical paths:
 - `feedback.md` means `{{FEEDBACK_MD}}`. Do not use any other file when told `feedback.md`.
-- Agent guidance lives at `{{AGENTS_REPO}}` cloned from `{{AGENTS_GIT_URL}}`.
+- Optional guidance dir: `{{GUIDANCE_DIR}}`.
 
 PRs under test, if any: {{PR_NUMBERS}}.
 

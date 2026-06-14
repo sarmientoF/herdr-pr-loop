@@ -8,7 +8,7 @@ Sync mode: `{{SYNC_MODE}}`.
 
 Files:
 - `review.md` means `{{REVIEW_MD}}`.
-- Agent guidance lives at `{{AGENTS_REPO}}`.
+- Optional guidance dir: `{{GUIDANCE_DIR}}`.
 
 Loop until human says stop:
 1. `/compact`
