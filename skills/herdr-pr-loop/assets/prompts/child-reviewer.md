@@ -9,6 +9,7 @@ Destructive operations allowed: `{{ALLOW_DESTRUCTIVE}}`.
 
 Critical paths:
 - `feedback.md` means `{{FEEDBACK_MD}}`. Do not use any other file when told `feedback.md`.
+- Feedback lock dir: `{{FEEDBACK_LOCK_DIR}}`.
 - Run log: `{{RUN_LOG_MD}}`.
 - Budget: `{{BUDGET_MD}}`.
 - Denylist: `{{DENYLIST_MD}}`.
@@ -24,13 +25,14 @@ Loop until human says stop:
    - if sync mode is `local`: compare local child branch/ref and working tree status to last known state; do not fetch
    - if sync mode is `remote`: check git commit for child PR {{CHILD_PR}}
 6. If code changed since last run:
-   - run `/cr-full` and append findings to `{{FEEDBACK_MD}}`
-   - run `/review` and append findings to `{{FEEDBACK_MD}}`
-   - if guidance dir exists, read `@{{GUIDANCE_DIR}}/REVIEWER.md` and perform review; append findings to `{{FEEDBACK_MD}}`
-   - if guidance dir exists, read `@{{GUIDANCE_DIR}}/review/CODE_REVIEW.md` and perform review; append findings to `{{FEEDBACK_MD}}`
-   - if guidance dir exists, read `@{{GUIDANCE_DIR}}/review/SECURITY_REVIEW.md` and perform review; append findings to `{{FEEDBACK_MD}}`
-   - if guidance dir exists, read `@{{GUIDANCE_DIR}}/review/DESIGN_REVIEW.md` and perform review; append findings to `{{FEEDBACK_MD}}`
+   - run `{{FULL_REVIEW_COMMAND}}` and prepare findings
+   - run `{{REVIEW_COMMAND}}` and prepare findings
+   - if guidance dir exists, read `@{{GUIDANCE_DIR}}/REVIEWER.md` and prepare findings
+   - if guidance dir exists, read `@{{GUIDANCE_DIR}}/review/CODE_REVIEW.md` and prepare findings
+   - if guidance dir exists, read `@{{GUIDANCE_DIR}}/review/SECURITY_REVIEW.md` and prepare findings
+   - if guidance dir exists, read `@{{GUIDANCE_DIR}}/review/DESIGN_REVIEW.md` and prepare findings
    - mark denylisted-path findings as human-gated
+   - append all findings to `{{FEEDBACK_MD}}` while holding the `{{FEEDBACK_LOCK_DIR}}` mkdir lock
 7. Append one concise result entry to `{{RUN_LOG_MD}}`.
 8. List OPEN issues.
 9. Sleep {{POLL_SECONDS}} seconds, then repeat.

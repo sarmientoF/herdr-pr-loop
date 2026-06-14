@@ -41,7 +41,7 @@ In any project repo:
 ```bash
 TOOL="$HOME/.agents/skills/herdr-pr-loop/scripts/herdr-pr-loop.py"
 uv run --script "$TOOL" init
-uv run --script "$TOOL" check
+uv run --script "$TOOL" doctor
 uv run --script "$TOOL" launch
 ```
 
@@ -52,6 +52,7 @@ From this checkout, use `skills/herdr-pr-loop/scripts/herdr-pr-loop.py` as `TOOL
 - `.herdr-loop.env`: project config
 - `.herdr-loop/review.md`: reviewer state and issue list
 - `.herdr-loop/feedback.md`: tester/child-reviewer input queue
+- `.herdr-loop/feedback.lock.d`: mkdir lock used while appending/draining feedback
 - `.herdr-loop/loop-run-log.md`: human-readable run log
 - `.herdr-loop/loop-run-log.jsonl`: machine-readable run log
 - `.herdr-loop/loop-budget.md`: budget and attempt caps
@@ -64,6 +65,7 @@ For two projects, run `init` in each repo. Each project gets its own `.herdr-loo
 
 ```bash
 TOOL="$HOME/.agents/skills/herdr-pr-loop/scripts/herdr-pr-loop.py"
+uv run --script "$TOOL" doctor
 uv run --script "$TOOL" status
 uv run --script "$TOOL" stop "pause reason"
 uv run --script "$TOOL" start
@@ -91,6 +93,8 @@ Key settings:
 - `ALLOW_DESTRUCTIVE`: default `false`
 - `MAX_ATTEMPTS`: cap before `NEEDS_REVIEW`
 - `MAX_SUBAGENTS_PER_RUN`: reviewer fan-out cap
+- `TOKEN_BUDGET_DAILY`: daily token budget note for agents
+- `CLEAN_CHECK_COMMAND`, `REVIEW_COMMAND`, `FULL_REVIEW_COMMAND`: role commands
 - `AGENT_BIN` / `AGENT_ARGS`: default `claude --permission-mode auto`
 - `GUIDANCE_DIR`: optional custom review guidance; defaults to bundled guidance
 

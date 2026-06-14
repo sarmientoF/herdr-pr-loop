@@ -14,26 +14,33 @@ Create a reusable Herdr workspace where each role runs in its own tab and coordi
 1. Initialize a project:
 
 ```bash
-uv run --script skills/herdr-pr-loop/scripts/herdr-pr-loop.py init
+TOOL="$HOME/.agents/skills/herdr-pr-loop/scripts/herdr-pr-loop.py"
+uv run --script "$TOOL" init
 ```
 
 2. Edit `.herdr-loop.env` if needed.
 3. Render one prompt before launch if changing roles:
 
 ```bash
-uv run --script skills/herdr-pr-loop/scripts/herdr-pr-loop.py render tester
+uv run --script "$TOOL" render tester
 ```
 
-4. Smoke-check:
+4. Smoke-check prompts:
 
 ```bash
-uv run --script skills/herdr-pr-loop/scripts/herdr-pr-loop.py check
+uv run --script "$TOOL" check
 ```
 
-5. Launch:
+5. Check local prerequisites:
 
 ```bash
-uv run --script skills/herdr-pr-loop/scripts/herdr-pr-loop.py launch
+uv run --script "$TOOL" doctor
+```
+
+6. Launch:
+
+```bash
+uv run --script "$TOOL" launch
 ```
 
 Set `HERD_CONF=/path/to/herd.env` or pass `--config /path/to/herd.env` when config is not `./.herdr-loop.env`.
@@ -48,6 +55,7 @@ Commands:
 - `render ROLE [CHILD_PR]`: print rendered role prompt.
 - `run-agent [--print] ROLE [CHILD_PR]`: print prompt or exec configured agent.
 - `check`: validate script syntax and prompt rendering.
+- `doctor`: validate config, repo path, required CLIs, and core prompt rendering.
 - `launch`: create Herdr workspace/tabs and start agents.
 - `status`: print config, state, review dir, and pause state as JSON.
 - `stop [reason]`: write the pause file and mark state paused.
@@ -64,6 +72,7 @@ Use `PROJECT_REPO` for the target repo. Legacy `JAI_REPO` remains an alias.
 
 - Keep roles independent; use `reviewer` as coordinator through `review.md`.
 - Treat `feedback.md` as single tester/child-reviewer input queue.
+- Use the `FEEDBACK_LOCK_DIR` mkdir lock before appending or draining `feedback.md`.
 - Keep durable state in `state.json`, `loop-run-log.md`, and `loop-run-log.jsonl`.
 - Respect `loop-budget.md`, `denylist.md`, `PAUSE`, and attempt caps.
 - Default to `SYNC_MODE=local`; require `ALLOW_REMOTE=true` before remote sync.

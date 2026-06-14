@@ -37,6 +37,7 @@ DEFAULTS = {
     "REVIEW_DIR": "$PROJECT_REPO/.herdr-loop",
     "FEEDBACK_MD": "$REVIEW_DIR/feedback.md",
     "FEEDBACK_LOCK_MD": "$REVIEW_DIR/feedback.lock.md",
+    "FEEDBACK_LOCK_DIR": "$REVIEW_DIR/feedback.lock.d",
     "REVIEW_MD": "$REVIEW_DIR/review.md",
     "RUN_LOG_MD": "$REVIEW_DIR/loop-run-log.md",
     "RUN_LOG_JSONL": "$REVIEW_DIR/loop-run-log.jsonl",
@@ -50,6 +51,9 @@ DEFAULTS = {
     "AUTO_MERGE": "false",
     "ALLOW_REMOTE": "false",
     "ALLOW_DESTRUCTIVE": "false",
+    "CLEAN_CHECK_COMMAND": "/clean-check",
+    "REVIEW_COMMAND": "/review",
+    "FULL_REVIEW_COMMAND": "/cr-full",
 }
 
 
@@ -88,11 +92,11 @@ def select_config(path: str | None) -> Path:
         cfg_path = Path(explicit).expanduser()
         if not cfg_path.exists():
             raise SystemExit(f"config not found: {cfg_path}")
-        return cfg_path
+        return cfg_path.resolve()
     for name in CONFIG_CANDIDATES:
         cfg_path = Path(name)
         if cfg_path.exists():
-            return cfg_path
+            return cfg_path.resolve()
     return EXAMPLE_CONFIG
 
 
@@ -127,6 +131,35 @@ def read_config(path: str | None) -> tuple[dict[str, str], Path | None]:
     if cfg["SYNC_MODE"] == "remote" and cfg.get("ALLOW_REMOTE", "").lower() != "true":
         raise SystemExit("remote sync requires ALLOW_REMOTE=true")
     return cfg, cfg_path if cfg_path.exists() else None
+
+
+def validate_setup(cfg: dict[str, str], *, require_herdr: bool) -> list[str]:
+    tools = ["uv", "git", cfg["AGENT_BIN"]]
+    if require_herdr:
+        tools.append("herdr")
+    if cfg["SYNC_MODE"] == "remote":
+        tools.append("gh")
+    missing = [tool for tool in tools if not shutil_which(tool)]
+    problems = []
+    repo = Path(cfg["PROJECT_REPO"])
+    if not repo.is_dir():
+        problems.append(f"PROJECT_REPO not found: {repo}")
+    else:
+        proc = subprocess.run(
+            ["git", "-C", str(repo), "rev-parse", "--is-inside-work-tree"],
+            text=True,
+            capture_output=True,
+        )
+        if proc.returncode != 0 or proc.stdout.strip() != "true":
+            problems.append(f"PROJECT_REPO is not a git worktree: {repo}")
+    if missing:
+        problems.append("missing tools: " + ", ".join(missing))
+    if cfg["SYNC_MODE"] == "remote":
+        if not cfg.get("PR_NUMBERS"):
+            problems.append("remote sync requires PR_NUMBERS")
+        if not cfg.get("PARENT_BRANCH"):
+            problems.append("remote sync requires PARENT_BRANCH")
+    return problems
 
 
 def now_iso() -> str:
@@ -319,12 +352,6 @@ def run_json(args: list[str]) -> dict:
     return json.loads(proc.stdout)
 
 
-def require_tools(*tools: str) -> None:
-    missing = [tool for tool in tools if not shutil_which(tool)]
-    if missing:
-        raise SystemExit("missing: " + ", ".join(missing))
-
-
 def shutil_which(cmd: str) -> str | None:
     for part in os.environ.get("PATH", "").split(os.pathsep):
         candidate = Path(part) / cmd
@@ -351,7 +378,9 @@ def run_in_pane(pane: str, tab: str, name: str, command: str) -> None:
 
 def cmd_launch(args: argparse.Namespace) -> None:
     cfg, cfg_path = read_config(args.config)
-    require_tools("herdr", "git", "uv", cfg["AGENT_BIN"])
+    problems = validate_setup(cfg, require_herdr=True)
+    if problems:
+        raise SystemExit("\n".join(problems))
     ensure_not_paused(cfg)
     init_loop_files(cfg)
     state = load_state(cfg)
@@ -469,16 +498,31 @@ def cmd_check(args: argparse.Namespace) -> None:
     print("ok")
 
 
+def cmd_doctor(args: argparse.Namespace) -> None:
+    cfg, cfg_path = read_config(args.config)
+    problems = validate_setup(cfg, require_herdr=True)
+    for role in ("tester", "coder", "reviewer"):
+        render(role, "", cfg)
+    if problems:
+        raise SystemExit("\n".join(problems))
+    print(f"config: {cfg_path}")
+    print(f"project_repo: {cfg['PROJECT_REPO']}")
+    print(f"review_dir: {cfg['REVIEW_DIR']}")
+    print("doctor: ok")
+
+
 def cmd_init(args: argparse.Namespace) -> None:
-    target = Path(args.config or DEFAULT_CONFIG)
-    if target.exists() and not args.force:
-        raise SystemExit(f"exists: {target} (use --force)")
+    target = Path(args.config or DEFAULT_CONFIG).expanduser()
+    target.parent.mkdir(parents=True, exist_ok=True)
     if not target.exists() or args.force:
         target.write_text(EXAMPLE_CONFIG.read_text())
     cfg, _ = read_config(str(target))
     init_loop_files(cfg)
     print(f"config: {target}")
     print(f"review_dir: {cfg['REVIEW_DIR']}")
+    tool = Path(__file__).resolve()
+    print(f"next: uv run --script {tool} doctor")
+    print(f"then: uv run --script {tool} launch")
 
 
 def cmd_status(args: argparse.Namespace) -> None:
@@ -552,7 +596,7 @@ def cmd_install(args: argparse.Namespace) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", help="Path to herd config file")
+    parser.add_argument("--config", dest="global_config", help="Path to herd config file")
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--config", help="Path to herd config file")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -570,6 +614,9 @@ def main() -> None:
 
     p = sub.add_parser("check", parents=[common])
     p.set_defaults(func=cmd_check)
+
+    p = sub.add_parser("doctor", parents=[common])
+    p.set_defaults(func=cmd_doctor)
 
     p = sub.add_parser("init")
     p.add_argument("--config", help=f"Config file to create, default {DEFAULT_CONFIG}")
@@ -599,6 +646,8 @@ def main() -> None:
     p.set_defaults(func=cmd_install)
 
     args = parser.parse_args()
+    if not hasattr(args, "config") or args.config is None:
+        args.config = args.global_config
     args.func(args)
 
 

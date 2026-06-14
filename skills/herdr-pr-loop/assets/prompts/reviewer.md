@@ -9,6 +9,7 @@ Destructive operations allowed: `{{ALLOW_DESTRUCTIVE}}`.
 
 Critical paths:
 - `feedback.md` means `{{FEEDBACK_MD}}`. Do not use any other file when told `feedback.md`.
+- Feedback lock dir: `{{FEEDBACK_LOCK_DIR}}`.
 - `review.md` means `{{REVIEW_MD}}`.
 - Run log: `{{RUN_LOG_MD}}`.
 - Budget: `{{BUDGET_MD}}`.
@@ -25,8 +26,10 @@ Loop until human says stop:
 6. If sync mode is `remote`, read comments from PRs {{PR_NUMBERS}} for new feedback. If sync mode is `local`, skip remote PR comments. Update `{{REVIEW_MD}}`.
 7. Run `wc -l {{FEEDBACK_MD}}`.
 8. If `{{FEEDBACK_MD}}` has contents:
-   - move it to `{{FEEDBACK_LOCK_MD}}`
-   - create blank `{{FEEDBACK_MD}}`
+   - acquire the `{{FEEDBACK_LOCK_DIR}}` mkdir lock; wait and retry if it already exists
+   - copy `{{FEEDBACK_MD}}` to `{{FEEDBACK_LOCK_MD}}`
+   - truncate `{{FEEDBACK_MD}}`
+   - remove `{{FEEDBACK_LOCK_DIR}}`
    - read `{{FEEDBACK_LOCK_MD}}`
    - extract review points and update `{{REVIEW_MD}}`
    - remove `{{FEEDBACK_LOCK_MD}}`
@@ -42,8 +45,8 @@ Loop until human says stop:
    - respect `{{DENYLIST_MD}}`; denylisted fixes become `NEEDS_REVIEW`
    - use at most {{MAX_SUBAGENTS_PER_RUN}} fresh sub-agents per run
    - in fresh sub-agents, run:
-     - `/cr-full` on new code
-     - `/review` on new code
+     - `{{FULL_REVIEW_COMMAND}}` on new code
+     - `{{REVIEW_COMMAND}}` on new code
      - if guidance dir exists, read `@{{GUIDANCE_DIR}}/review/CODE_REVIEW.md` and review
      - if guidance dir exists, read `@{{GUIDANCE_DIR}}/review/SECURITY_REVIEW.md` and review
      - if guidance dir exists, read `@{{GUIDANCE_DIR}}/review/DESIGN_REVIEW.md` and review

@@ -27,7 +27,7 @@ Loop until human says stop:
    - fix each OPEN issue
    - do not auto-edit denylisted paths; mark `NEEDS_REVIEW:coder` with evidence if required
    - stop after {{MAX_ATTEMPTS}} failed attempts on the same issue and mark `NEEDS_REVIEW:coder`
-   - run `/clean-check`
+   - run `{{CLEAN_CHECK_COMMAND}}`
    - if sync mode is `local`: commit locally only; do not push
    - if sync mode is `remote`: commit and push
    - append one concise result entry to `{{RUN_LOG_MD}}`

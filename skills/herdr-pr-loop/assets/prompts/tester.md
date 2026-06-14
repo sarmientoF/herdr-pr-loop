@@ -9,6 +9,7 @@ Destructive operations allowed: `{{ALLOW_DESTRUCTIVE}}`.
 
 Critical paths:
 - `feedback.md` means `{{FEEDBACK_MD}}`. Do not use any other file when told `feedback.md`.
+- Feedback lock dir: `{{FEEDBACK_LOCK_DIR}}`.
 - Run log: `{{RUN_LOG_MD}}`.
 - Budget: `{{BUDGET_MD}}`.
 - Pause file: `{{PAUSE_FILE}}`.
@@ -34,7 +35,7 @@ Loop until human says stop:
 7. If bugs exist:
    - trace each bug to source with evidence
    - list why it failed
-   - append bug reports plus evidence to `{{FEEDBACK_MD}}`
+   - append bug reports plus evidence to `{{FEEDBACK_MD}}` while holding the `{{FEEDBACK_LOCK_DIR}}` mkdir lock
 8. Append one concise result entry to `{{RUN_LOG_MD}}`.
 9. If checks succeeded, report `READY TO TEST`.
 10. Sleep {{POLL_SECONDS}} seconds, then repeat.
