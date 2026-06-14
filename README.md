@@ -1,81 +1,20 @@
 # Herdr PR Loop
 
-Reusable Herdr PR-loop skill + `uv` tool.
+Reusable Herdr skill + `uv` tool for local task loops and optional PR review loops.
 
-Canonical package:
-
-```text
-skills/herdr-pr-loop/
-```
-
-## Configure
-
-Copy/edit config:
-
-```bash
-cp skills/herdr-pr-loop/assets/herd.env.example herd.conf.sh
-```
-
-- `JAI_REPO`: repo each agent starts in
-- `REVIEW_DIR`: directory containing `review.md` and `feedback.md`
-- `AGENT_BIN` / `AGENT_ARGS`: default `claude --permission-mode auto`
-- `TASK_NAME`: local task label
-- `PR_NUMBERS`, `PARENT_PR`, `CHILD_PRS`, `PARENT_BRANCH`: optional, mainly remote PR mode
-- `SYNC_MODE`: `local` avoids fetch/push; `remote` uses GitHub PR branches
-- `GUIDANCE_DIR`: optional custom review guidance; defaults to bundled guidance in this skill
-
-## Check
-
-```bash
-./bin/check
-```
-
-Same command without wrapper:
-
-```bash
-uv run --script skills/herdr-pr-loop/scripts/herdr-pr-loop.py check
-```
-
-## Launch
-
-```bash
-./bin/launch-herd
-```
-
-This creates one Herdr workspace with tabs:
+It creates Herdr tabs for independent agents:
 
 - `tester`
 - `coder`
 - `reviewer`
-- `child-coder-<pr>`
-- `child-reviewer-<pr>`
+- `child-coder-<pr>` when `CHILD_PRS` is set
+- `child-reviewer-<pr>` when `CHILD_PRS` is set
 
-## Local Vs Remote
+The default is local-only: no fetch, pull, push, or GitHub dependency.
 
-Default is local:
+## Install
 
-```bash
-SYNC_MODE=local
-```
-
-Local mode:
-
-- no `git push`
-- no required GitHub PR updates
-- agents test/review current working tree and local commits
-- `review.md` / `feedback.md` stay local
-
-Remote mode:
-
-```bash
-SYNC_MODE=remote
-```
-
-Remote mode fetches/pulls/pushes PR branches and watches GitHub commits.
-
-## Install As Skill
-
-From GitHub after publish:
+From GitHub:
 
 ```bash
 bunx skills add sarmientoF/herdr-pr-loop --skill herdr-pr-loop --agent codex -g -y
@@ -87,46 +26,98 @@ Local checkout:
 bunx skills add . --skill herdr-pr-loop --agent codex -g -y
 ```
 
-Codex repo skill:
-
-```bash
-uv run --script skills/herdr-pr-loop/scripts/herdr-pr-loop.py install --target codex-repo
-```
-
-Codex user skill:
+Direct install without `bunx`:
 
 ```bash
 uv run --script skills/herdr-pr-loop/scripts/herdr-pr-loop.py install --target codex-user
 ```
 
-Claude project skill:
+Prereqs: `herdr`, `uv`, and your agent CLI, default `claude`.
+
+## Per-Project Setup
+
+In any project repo:
 
 ```bash
-uv run --script skills/herdr-pr-loop/scripts/herdr-pr-loop.py install --target claude-repo
+TOOL="$HOME/.agents/skills/herdr-pr-loop/scripts/herdr-pr-loop.py"
+uv run --script "$TOOL" init
+uv run --script "$TOOL" check
+uv run --script "$TOOL" launch
 ```
 
-Restart agent if skill does not appear.
+From this checkout, use `skills/herdr-pr-loop/scripts/herdr-pr-loop.py` as `TOOL`.
 
-## GitHub Repo
+`init` creates:
 
-Suggested repo name:
+- `.herdr-loop.env`: project config
+- `.herdr-loop/review.md`: reviewer state and issue list
+- `.herdr-loop/feedback.md`: tester/child-reviewer input queue
+- `.herdr-loop/loop-run-log.md`: human-readable run log
+- `.herdr-loop/loop-run-log.jsonl`: machine-readable run log
+- `.herdr-loop/loop-budget.md`: budget and attempt caps
+- `.herdr-loop/denylist.md`: paths requiring human approval
+- `.herdr-loop/state.json`: Herdr workspace/tab/pane state
 
-```text
-herdr-pr-loop
-```
+For two projects, run `init` in each repo. Each project gets its own `.herdr-loop.env` and `.herdr-loop/` state.
 
-Create/push after review:
+## Manage
 
 ```bash
-git init
-git add .
-git commit -m "Initial herdr PR loop skill"
-gh repo create herdr-pr-loop --public --source=. --remote=origin --push
+TOOL="$HOME/.agents/skills/herdr-pr-loop/scripts/herdr-pr-loop.py"
+uv run --script "$TOOL" status
+uv run --script "$TOOL" stop "pause reason"
+uv run --script "$TOOL" start
 ```
 
-After publish:
+`stop` writes `.herdr-loop/PAUSE`. Agents check that file each loop and stop at the next cycle.
 
-```bash
-bunx skills add sarmientoF/herdr-pr-loop --skill herdr-pr-loop --agent codex -g -y
-bunx skills use sarmientoF/herdr-pr-loop@herdr-pr-loop
+## Config
+
+Config lookup order:
+
+1. `--config /path/to/file`
+2. `HERD_CONF=/path/to/file`
+3. `./.herdr-loop.env`
+4. `./herd.env`
+5. `./herd.conf.sh` for backward compatibility
+6. bundled defaults
+
+Key settings:
+
+- `PROJECT_REPO`: repo each agent starts in
+- `REVIEW_DIR`: state directory, default `$PROJECT_REPO/.herdr-loop`
+- `SYNC_MODE`: `local` or `remote`
+- `ALLOW_REMOTE`: must be `true` for remote mode
+- `ALLOW_DESTRUCTIVE`: default `false`
+- `MAX_ATTEMPTS`: cap before `NEEDS_REVIEW`
+- `MAX_SUBAGENTS_PER_RUN`: reviewer fan-out cap
+- `AGENT_BIN` / `AGENT_ARGS`: default `claude --permission-mode auto`
+- `GUIDANCE_DIR`: optional custom review guidance; defaults to bundled guidance
+
+Legacy `JAI_REPO` still works as an alias for `PROJECT_REPO`.
+
+## Remote PR Mode
+
+Remote mode is explicit:
+
+```env
+SYNC_MODE=remote
+ALLOW_REMOTE=true
+PARENT_PR=12499
+PR_NUMBERS=12499 13045 12886
+CHILD_PRS=13045 12886
+PARENT_BRANCH=feat/example
 ```
+
+Use `examples/japan-ai-pr-loop.env` as the shape for a parent PR plus child PRs.
+
+## Loop Pattern
+
+This follows the practical loop-engineering shape:
+
+- durable state outside chat
+- maker/checker split
+- run log and budget
+- pause file as kill switch
+- denylist and human gates
+- local report/assist first; remote automation only after opt-in

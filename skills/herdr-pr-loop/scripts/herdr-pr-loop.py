@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import json
 import os
 import re
@@ -16,24 +17,39 @@ from pathlib import Path
 SKILL_DIR = Path(__file__).resolve().parents[1]
 PROMPTS = SKILL_DIR / "assets" / "prompts"
 EXAMPLE_CONFIG = SKILL_DIR / "assets" / "herd.env.example"
+DEFAULT_CONFIG = ".herdr-loop.env"
+CONFIG_CANDIDATES = (DEFAULT_CONFIG, "herd.env", "herd.conf.sh")
 
 DEFAULTS = {
-    "WORKSPACE_LABEL": "pr-review-loop",
-    "JAI_REPO": "$PWD",
+    "WORKSPACE_LABEL": "",
+    "PROJECT_REPO": "$PWD",
+    "JAI_REPO": "",
     "GUIDANCE_DIR": "",
     "AGENT_BIN": "claude",
     "AGENT_ARGS": "--permission-mode auto",
     "POLL_SECONDS": "120",
     "SYNC_MODE": "local",
-    "TASK_NAME": "local-task",
+    "TASK_NAME": "",
     "PARENT_PR": "",
     "PR_NUMBERS": "",
     "CHILD_PRS": "",
     "PARENT_BRANCH": "",
-    "REVIEW_DIR": "$PWD/.herdr-pr-loop",
+    "REVIEW_DIR": "$PROJECT_REPO/.herdr-loop",
     "FEEDBACK_MD": "$REVIEW_DIR/feedback.md",
     "FEEDBACK_LOCK_MD": "$REVIEW_DIR/feedback.lock.md",
     "REVIEW_MD": "$REVIEW_DIR/review.md",
+    "RUN_LOG_MD": "$REVIEW_DIR/loop-run-log.md",
+    "RUN_LOG_JSONL": "$REVIEW_DIR/loop-run-log.jsonl",
+    "BUDGET_MD": "$REVIEW_DIR/loop-budget.md",
+    "DENYLIST_MD": "$REVIEW_DIR/denylist.md",
+    "STATE_JSON": "$REVIEW_DIR/state.json",
+    "PAUSE_FILE": "$REVIEW_DIR/PAUSE",
+    "MAX_ATTEMPTS": "3",
+    "MAX_SUBAGENTS_PER_RUN": "6",
+    "TOKEN_BUDGET_DAILY": "2000000",
+    "AUTO_MERGE": "false",
+    "ALLOW_REMOTE": "false",
+    "ALLOW_DESTRUCTIVE": "false",
 }
 
 
@@ -61,11 +77,28 @@ def expand(value: str, cfg: dict[str, str]) -> str:
     )
 
 
+def slug(value: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "-", value.strip()).strip("-")
+    return cleaned or "local-task"
+
+
+def select_config(path: str | None) -> Path:
+    explicit = path or os.environ.get("HERD_CONF")
+    if explicit:
+        cfg_path = Path(explicit).expanduser()
+        if not cfg_path.exists():
+            raise SystemExit(f"config not found: {cfg_path}")
+        return cfg_path
+    for name in CONFIG_CANDIDATES:
+        cfg_path = Path(name)
+        if cfg_path.exists():
+            return cfg_path
+    return EXAMPLE_CONFIG
+
+
 def read_config(path: str | None) -> tuple[dict[str, str], Path | None]:
     cfg = dict(DEFAULTS)
-    cfg_path = Path(path or os.environ.get("HERD_CONF") or "herd.conf.sh")
-    if not cfg_path.exists():
-        cfg_path = EXAMPLE_CONFIG
+    cfg_path = select_config(path)
 
     for raw in cfg_path.read_text().splitlines():
         line = raw.strip()
@@ -82,8 +115,181 @@ def read_config(path: str | None) -> tuple[dict[str, str], Path | None]:
 
     for key, value in list(cfg.items()):
         cfg[key] = expand(value, cfg)
+    if cfg.get("JAI_REPO"):
+        cfg["PROJECT_REPO"] = cfg["JAI_REPO"]
+    else:
+        cfg["JAI_REPO"] = cfg["PROJECT_REPO"]
+    cfg["TASK_NAME"] = cfg.get("TASK_NAME") or slug(Path(cfg["PROJECT_REPO"]).resolve().name)
+    cfg["WORKSPACE_LABEL"] = cfg.get("WORKSPACE_LABEL") or f"herdr-{slug(cfg['TASK_NAME'])}"
     cfg["GUIDANCE_DIR"] = cfg.get("GUIDANCE_DIR") or str(SKILL_DIR / "assets" / "guidance")
+    if cfg["SYNC_MODE"] not in {"local", "remote"}:
+        raise SystemExit("SYNC_MODE must be local or remote")
+    if cfg["SYNC_MODE"] == "remote" and cfg.get("ALLOW_REMOTE", "").lower() != "true":
+        raise SystemExit("remote sync requires ALLOW_REMOTE=true")
     return cfg, cfg_path if cfg_path.exists() else None
+
+
+def now_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def write_if_missing_or_empty(path: Path, text: str) -> None:
+    if path.exists() and path.read_text().strip():
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+
+
+def init_loop_files(cfg: dict[str, str]) -> None:
+    review_dir = Path(cfg["REVIEW_DIR"])
+    review_dir.mkdir(parents=True, exist_ok=True)
+    Path(cfg["FEEDBACK_MD"]).touch()
+    write_if_missing_or_empty(
+        Path(cfg["REVIEW_MD"]),
+        f"""# Review State
+
+## META
+task: {cfg["TASK_NAME"]}
+sync_mode: {cfg["SYNC_MODE"]}
+last_head:
+last_worktree:
+max_attempts: {cfg["MAX_ATTEMPTS"]}
+max_subagents_per_run: {cfg["MAX_SUBAGENTS_PER_RUN"]}
+pause_file: {cfg["PAUSE_FILE"]}
+
+## OPEN
+
+## NEEDS_REVIEW
+
+## CLOSED
+
+## HUMAN_INBOX
+""",
+    )
+    write_if_missing_or_empty(
+        Path(cfg["RUN_LOG_MD"]),
+        f"""# Loop Run Log
+
+Append one concise entry per role run. Keep secrets and large logs out.
+
+| time | role | event | items | outcome |
+| --- | --- | --- | --- | --- |
+""",
+    )
+    write_if_missing_or_empty(Path(cfg["RUN_LOG_JSONL"]), "")
+    write_if_missing_or_empty(
+        Path(cfg["BUDGET_MD"]),
+        f"""# Loop Budget
+
+- task: {cfg["TASK_NAME"]}
+- max_tokens_per_day: {cfg["TOKEN_BUDGET_DAILY"]}
+- max_subagents_per_run: {cfg["MAX_SUBAGENTS_PER_RUN"]}
+- max_attempts_per_issue: {cfg["MAX_ATTEMPTS"]}
+- auto_merge: {cfg["AUTO_MERGE"]}
+- pause_file: {cfg["PAUSE_FILE"]}
+
+Pause or escalate when the budget is exceeded, an issue hits the attempt cap, or a denylisted path must change.
+""",
+    )
+    write_if_missing_or_empty(
+        Path(cfg["DENYLIST_MD"]),
+        """# Loop Denylist
+
+Do not auto-edit these paths without human approval:
+
+- `.env`
+- `.env.*`
+- `**/secrets/**`
+- `**/credentials/**`
+- `**/*_key*`
+- `**/*_secret*`
+- `.terraform/**`
+- `k8s/production/**`
+- `**/migrations/**`
+- `auth/**`
+- `payments/**`
+- `billing/**`
+""",
+    )
+    write_if_missing_or_empty(
+        Path(cfg["STATE_JSON"]),
+        json.dumps(
+            {
+                "task": cfg["TASK_NAME"],
+                "sync_mode": cfg["SYNC_MODE"],
+                "status": "initialized",
+                "workspace_label": cfg["WORKSPACE_LABEL"],
+                "workspace_id": None,
+                "config": None,
+                "project_repo": cfg["PROJECT_REPO"],
+                "review_dir": cfg["REVIEW_DIR"],
+                "roles": {},
+                "updated_at": now_iso(),
+            },
+            indent=2,
+        )
+        + "\n",
+    )
+
+
+def append_run_log(cfg: dict[str, str], role: str, event: str, outcome: str) -> None:
+    init_loop_files(cfg)
+    stamp = now_iso()
+    line = f"| {stamp} | {role} | {event} | - | {outcome} |\n"
+    with Path(cfg["RUN_LOG_MD"]).open("a") as handle:
+        handle.write(line)
+    with Path(cfg["RUN_LOG_JSONL"]).open("a") as handle:
+        handle.write(
+            json.dumps(
+                {
+                    "time": stamp,
+                    "role": role,
+                    "event": event,
+                    "items": [],
+                    "outcome": outcome,
+                },
+                separators=(",", ":"),
+            )
+            + "\n"
+        )
+
+
+def load_state(cfg: dict[str, str]) -> dict:
+    init_loop_files(cfg)
+    state_path = Path(cfg["STATE_JSON"])
+    try:
+        return json.loads(state_path.read_text())
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"invalid state json: {state_path}: {exc}") from exc
+
+
+def save_state(cfg: dict[str, str], state: dict) -> None:
+    state["updated_at"] = now_iso()
+    Path(cfg["STATE_JSON"]).write_text(json.dumps(state, indent=2) + "\n")
+
+
+def record_role(
+    cfg: dict[str, str],
+    state: dict,
+    role: str,
+    tab_id: str,
+    pane_id: str,
+    command: str,
+) -> None:
+    state.setdefault("roles", {})[role] = {
+        "tab_id": tab_id,
+        "pane_id": pane_id,
+        "command": command,
+        "status": "started",
+        "started_at": now_iso(),
+    }
+    save_state(cfg, state)
+
+
+def ensure_not_paused(cfg: dict[str, str]) -> None:
+    pause_file = Path(cfg["PAUSE_FILE"])
+    if pause_file.exists():
+        raise SystemExit(f"loop paused: remove {pause_file} to launch")
 
 
 def render(role: str, child_pr: str, cfg: dict[str, str]) -> str:
@@ -131,7 +337,7 @@ def pane_cmd(cfg: dict[str, str], cfg_path: Path | None, role: str, child: str =
     env = f"HERD_CONF={shlex.quote(str(cfg_path))} " if cfg_path else ""
     tail = f" {shlex.quote(child)}" if child else ""
     return (
-        f"cd {shlex.quote(cfg['JAI_REPO'])} && "
+        f"cd {shlex.quote(cfg['PROJECT_REPO'])} && "
         f"{env}uv run --script {shlex.quote(str(Path(__file__).resolve()))} "
         f"run-agent {shlex.quote(role)}{tail}"
     )
@@ -146,17 +352,30 @@ def run_in_pane(pane: str, tab: str, name: str, command: str) -> None:
 def cmd_launch(args: argparse.Namespace) -> None:
     cfg, cfg_path = read_config(args.config)
     require_tools("herdr", "git", "uv", cfg["AGENT_BIN"])
-
-    Path(cfg["FEEDBACK_MD"]).parent.mkdir(parents=True, exist_ok=True)
-    Path(cfg["FEEDBACK_MD"]).touch()
-    Path(cfg["REVIEW_MD"]).touch()
+    ensure_not_paused(cfg)
+    init_loop_files(cfg)
+    state = load_state(cfg)
+    state.update(
+        {
+            "task": cfg["TASK_NAME"],
+            "sync_mode": cfg["SYNC_MODE"],
+            "status": "launching",
+            "workspace_label": cfg["WORKSPACE_LABEL"],
+            "config": str(cfg_path) if cfg_path else None,
+            "project_repo": cfg["PROJECT_REPO"],
+            "review_dir": cfg["REVIEW_DIR"],
+            "roles": {},
+            "launched_at": now_iso(),
+        }
+    )
+    save_state(cfg, state)
 
     ws_json = run_json([
         "herdr",
         "workspace",
         "create",
         "--cwd",
-        cfg["JAI_REPO"],
+        cfg["PROJECT_REPO"],
         "--label",
         cfg["WORKSPACE_LABEL"],
         "--focus",
@@ -165,8 +384,13 @@ def cmd_launch(args: argparse.Namespace) -> None:
     ws = result["workspace"]["workspace_id"]
     root_tab = result["tab"]["tab_id"]
     root_pane = result["root_pane"]["pane_id"]
+    state["workspace_id"] = ws
+    save_state(cfg, state)
 
-    run_in_pane(root_pane, root_tab, "tester", pane_cmd(cfg, cfg_path, "tester"))
+    command = pane_cmd(cfg, cfg_path, "tester")
+    run_in_pane(root_pane, root_tab, "tester", command)
+    record_role(cfg, state, "tester", root_tab, root_pane, command)
+    append_run_log(cfg, "tester", "spawned", "started")
 
     for role in ("coder", "reviewer"):
         tab_json = run_json([
@@ -176,17 +400,17 @@ def cmd_launch(args: argparse.Namespace) -> None:
             "--workspace",
             ws,
             "--cwd",
-            cfg["JAI_REPO"],
+            cfg["PROJECT_REPO"],
             "--label",
             role,
             "--no-focus",
         ])
-        run_in_pane(
-            tab_json["result"]["root_pane"]["pane_id"],
-            tab_json["result"]["tab"]["tab_id"],
-            role,
-            pane_cmd(cfg, cfg_path, role),
-        )
+        pane_id = tab_json["result"]["root_pane"]["pane_id"]
+        tab_id = tab_json["result"]["tab"]["tab_id"]
+        command = pane_cmd(cfg, cfg_path, role)
+        run_in_pane(pane_id, tab_id, role, command)
+        record_role(cfg, state, role, tab_id, pane_id, command)
+        append_run_log(cfg, role, "spawned", "started")
 
     for child in cfg.get("CHILD_PRS", "").split():
         for role in ("child-coder", "child-reviewer"):
@@ -198,29 +422,33 @@ def cmd_launch(args: argparse.Namespace) -> None:
                 "--workspace",
                 ws,
                 "--cwd",
-                cfg["JAI_REPO"],
+                cfg["PROJECT_REPO"],
                 "--label",
                 name,
                 "--no-focus",
             ])
-            run_in_pane(
-                tab_json["result"]["root_pane"]["pane_id"],
-                tab_json["result"]["tab"]["tab_id"],
-                name,
-                pane_cmd(cfg, cfg_path, role, child),
-            )
+            pane_id = tab_json["result"]["root_pane"]["pane_id"]
+            tab_id = tab_json["result"]["tab"]["tab_id"]
+            command = pane_cmd(cfg, cfg_path, role, child)
+            run_in_pane(pane_id, tab_id, name, command)
+            record_role(cfg, state, name, tab_id, pane_id, command)
+            append_run_log(cfg, name, "spawned", "started")
 
     subprocess.run(["herdr", "workspace", "focus", ws], check=True)
+    state["status"] = "running"
+    save_state(cfg, state)
     print(f"Herdr workspace: {cfg['WORKSPACE_LABEL']} ({ws})")
 
 
 def cmd_run_agent(args: argparse.Namespace) -> None:
     cfg, _ = read_config(args.config)
+    ensure_not_paused(cfg)
     prompt = render(args.role, args.child_pr or "", cfg)
     if args.print:
         print(prompt)
         return
-    os.chdir(cfg["JAI_REPO"])
+    append_run_log(cfg, args.role, "agent-start", "exec")
+    os.chdir(cfg["PROJECT_REPO"])
     argv = [cfg["AGENT_BIN"], *shlex.split(cfg.get("AGENT_ARGS", "")), prompt]
     os.execvp(argv[0], argv)
 
@@ -236,7 +464,65 @@ def cmd_check(args: argparse.Namespace) -> None:
     assert "NEEDS_REVIEW:coder" in render("coder", "", cfg)
     assert "child PR 13045" in render("child-coder", "13045", cfg)
     assert "CODE_REVIEW.md" in render("child-reviewer", "13045", cfg)
+    assert "loop-run-log.md" in render("reviewer", "", cfg)
+    assert "denylist.md" in render("coder", "", cfg)
     print("ok")
+
+
+def cmd_init(args: argparse.Namespace) -> None:
+    target = Path(args.config or DEFAULT_CONFIG)
+    if target.exists() and not args.force:
+        raise SystemExit(f"exists: {target} (use --force)")
+    if not target.exists() or args.force:
+        target.write_text(EXAMPLE_CONFIG.read_text())
+    cfg, _ = read_config(str(target))
+    init_loop_files(cfg)
+    print(f"config: {target}")
+    print(f"review_dir: {cfg['REVIEW_DIR']}")
+
+
+def cmd_status(args: argparse.Namespace) -> None:
+    cfg, cfg_path = read_config(args.config)
+    state = load_state(cfg)
+    paused = Path(cfg["PAUSE_FILE"]).exists()
+    summary = {
+        "config": str(cfg_path) if cfg_path else None,
+        "project_repo": cfg["PROJECT_REPO"],
+        "review_dir": cfg["REVIEW_DIR"],
+        "state_json": cfg["STATE_JSON"],
+        "run_log": cfg["RUN_LOG_MD"],
+        "paused": paused,
+        "state": state,
+    }
+    print(json.dumps(summary, indent=2))
+
+
+def cmd_stop(args: argparse.Namespace) -> None:
+    cfg, _ = read_config(args.config)
+    init_loop_files(cfg)
+    pause_file = Path(cfg["PAUSE_FILE"])
+    pause_file.write_text((args.reason or "stopped by user") + "\n")
+    state = load_state(cfg)
+    state["status"] = "paused"
+    state["pause_reason"] = args.reason or "stopped by user"
+    save_state(cfg, state)
+    append_run_log(cfg, "all", "stop", state["pause_reason"])
+    print(f"paused: {pause_file}")
+
+
+def cmd_start(args: argparse.Namespace) -> None:
+    cfg, _ = read_config(args.config)
+    pause_file = Path(cfg["PAUSE_FILE"])
+    if pause_file.exists():
+        pause_file.unlink()
+    init_loop_files(cfg)
+    state = load_state(cfg)
+    if state.get("status") == "paused":
+        state["status"] = "initialized"
+        state.pop("pause_reason", None)
+        save_state(cfg, state)
+    append_run_log(cfg, "all", "resume", "pause-file-removed")
+    print("resumed")
 
 
 def copy_skill(dst: Path, force: bool) -> None:
@@ -285,8 +571,23 @@ def main() -> None:
     p = sub.add_parser("check", parents=[common])
     p.set_defaults(func=cmd_check)
 
+    p = sub.add_parser("init")
+    p.add_argument("--config", help=f"Config file to create, default {DEFAULT_CONFIG}")
+    p.add_argument("--force", action="store_true")
+    p.set_defaults(func=cmd_init)
+
     p = sub.add_parser("launch", parents=[common])
     p.set_defaults(func=cmd_launch)
+
+    p = sub.add_parser("status", parents=[common])
+    p.set_defaults(func=cmd_status)
+
+    p = sub.add_parser("stop", parents=[common])
+    p.add_argument("reason", nargs="?")
+    p.set_defaults(func=cmd_stop)
+
+    p = sub.add_parser("start", parents=[common])
+    p.set_defaults(func=cmd_start)
 
     p = sub.add_parser("install")
     p.add_argument(

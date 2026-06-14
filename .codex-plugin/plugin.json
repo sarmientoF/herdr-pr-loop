@@ -1,0 +1,37 @@
+{
+  "name": "herdr-pr-loop",
+  "version": "0.1.0",
+  "description": "Herdr multi-agent loop orchestration for local tasks and PR review.",
+  "author": {
+    "name": "sarmientoF",
+    "url": "https://github.com/sarmientoF"
+  },
+  "homepage": "https://github.com/sarmientoF/herdr-pr-loop",
+  "repository": "https://github.com/sarmientoF/herdr-pr-loop",
+  "license": "MIT",
+  "keywords": [
+    "herdr",
+    "codex",
+    "skills",
+    "agents",
+    "loop-engineering"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Herdr PR Loop",
+    "shortDescription": "Launch tester, coder, and reviewer loops in Herdr.",
+    "longDescription": "A portable skill and uv tool for setting up Herdr-managed multi-agent loops with local state, review queues, run logs, safety gates, and optional remote PR sync.",
+    "developerName": "sarmientoF",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Automation",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Set up a local Herdr loop for this repo.",
+      "Launch reviewer/coder/tester agents in Herdr.",
+      "Initialize Herdr loop state and config."
+    ],
+    "brandColor": "#2563EB"
+  }
+}

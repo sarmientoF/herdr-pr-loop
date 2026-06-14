@@ -1,4 +1,5 @@
 .DS_Store
+.herdr-loop/
 .herdr-pr-loop/
 __pycache__/
 .venv/
