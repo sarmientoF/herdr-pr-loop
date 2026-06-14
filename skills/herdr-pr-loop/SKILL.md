@@ -65,9 +65,9 @@ Commands:
 
 Roles: `tester`, `coder`, `reviewer`, `child-coder`, `child-reviewer`.
 
-Config lookup order: `--config`, `HERD_CONF`, `./.herdr-loop.env`, `./herd.env`, legacy `./herd.conf.sh`, bundled defaults.
+Config lookup order: `--config`, `HERD_CONF`, `./.herdr-loop.env`, `./herd.env`, bundled defaults.
 
-Use `PROJECT_REPO` for the target repo. Legacy `JAI_REPO` remains an alias.
+Use `PROJECT_REPO` for the target repo.
 
 ## Design Rules
 

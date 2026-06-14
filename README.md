@@ -45,7 +45,7 @@ uv run --script "$TOOL" doctor
 uv run --script "$TOOL" launch
 ```
 
-From this checkout, use `skills/herdr-pr-loop/scripts/herdr-pr-loop.py` as `TOOL`.
+From this checkout, use `TOOL="$PWD/skills/herdr-pr-loop/scripts/herdr-pr-loop.py"`.
 
 `init` creates:
 
@@ -84,8 +84,7 @@ Config lookup order:
 2. `HERD_CONF=/path/to/file`
 3. `./.herdr-loop.env`
 4. `./herd.env`
-5. `./herd.conf.sh` for backward compatibility
-6. bundled defaults
+5. bundled defaults
 
 Key settings:
 
@@ -101,8 +100,6 @@ Key settings:
 - `AGENT_BIN` / `AGENT_ARGS`: default `claude --permission-mode auto`
 - `GUIDANCE_DIR`: optional custom review guidance; defaults to bundled guidance
 
-Legacy `JAI_REPO` still works as an alias for `PROJECT_REPO`.
-
 ## Remote PR Mode
 
 Remote mode is explicit:
@@ -110,13 +107,13 @@ Remote mode is explicit:
 ```env
 SYNC_MODE=remote
 ALLOW_REMOTE=true
-PARENT_PR=12499
-PR_NUMBERS=12499 13045 12886
-CHILD_PRS=13045 12886
+PARENT_PR=100
+PR_NUMBERS=100 101 102
+CHILD_PRS=101 102
 PARENT_BRANCH=feat/example
 ```
 
-Use `examples/japan-ai-pr-loop.env` as the shape for a parent PR plus child PRs.
+Use `examples/remote-pr-loop.env` as the shape for a parent PR plus child PRs.
 
 ## Loop Pattern
 

@@ -18,12 +18,11 @@ SKILL_DIR = Path(__file__).resolve().parents[1]
 PROMPTS = SKILL_DIR / "assets" / "prompts"
 EXAMPLE_CONFIG = SKILL_DIR / "assets" / "herd.env.example"
 DEFAULT_CONFIG = ".herdr-loop.env"
-CONFIG_CANDIDATES = (DEFAULT_CONFIG, "herd.env", "herd.conf.sh")
+CONFIG_CANDIDATES = (DEFAULT_CONFIG, "herd.env")
 
 DEFAULTS = {
     "WORKSPACE_LABEL": "",
     "PROJECT_REPO": "$PWD",
-    "JAI_REPO": "",
     "GUIDANCE_DIR": "",
     "AGENT_BIN": "claude",
     "AGENT_ARGS": "--permission-mode auto",
@@ -120,10 +119,6 @@ def read_config(path: str | None) -> tuple[dict[str, str], Path | None]:
 
     for key, value in list(cfg.items()):
         cfg[key] = expand(value, cfg, base_pwd)
-    if cfg.get("JAI_REPO"):
-        cfg["PROJECT_REPO"] = cfg["JAI_REPO"]
-    else:
-        cfg["JAI_REPO"] = cfg["PROJECT_REPO"]
     cfg["TASK_NAME"] = cfg.get("TASK_NAME") or slug(Path(cfg["PROJECT_REPO"]).resolve().name)
     cfg["WORKSPACE_LABEL"] = cfg.get("WORKSPACE_LABEL") or f"herdr-{slug(cfg['TASK_NAME'])}"
     cfg["GUIDANCE_DIR"] = cfg.get("GUIDANCE_DIR") or str(SKILL_DIR / "assets" / "guidance")
@@ -528,8 +523,8 @@ def cmd_check(args: argparse.Namespace) -> None:
     cfg, _ = read_config(args.config)
     assert "READY TO TEST" in render("tester", "", cfg)
     assert "NEEDS_REVIEW:coder" in render("coder", "", cfg)
-    assert "child PR 13045" in render("child-coder", "13045", cfg)
-    assert "CODE_REVIEW.md" in render("child-reviewer", "13045", cfg)
+    assert "child PR 101" in render("child-coder", "101", cfg)
+    assert "CODE_REVIEW.md" in render("child-reviewer", "101", cfg)
     assert "loop-run-log.md" in render("reviewer", "", cfg)
     assert "denylist.md" in render("coder", "", cfg)
     print("ok")
