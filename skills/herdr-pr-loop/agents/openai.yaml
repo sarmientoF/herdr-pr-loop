@@ -1,0 +1,4 @@
+interface:
+  display_name: "Herdr PR Loop"
+  short_description: "Launch multi-agent PR loops in Herdr"
+  default_prompt: "Use $herdr-pr-loop to configure and launch tester/coder/reviewer Herdr tabs for PR review."
